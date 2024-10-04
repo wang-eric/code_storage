@@ -4,7 +4,7 @@ from tkinter import messagebox
 
 # Function to select input file
 def select_input_file():
-    file_path = filedialog.askopenfilename(filetypes=[("Text Files", "*.txt")])
+    file_path = filedialog.askopenfilename()  # No file type restriction
     input_file_entry.delete(0, tk.END)
     input_file_entry.insert(0, file_path)
 
@@ -24,17 +24,24 @@ def process_file():
             
             # Find numbers in the first 20 characters of each row and copy matching rows
             found_count = 0
+            found_numbers = set()
             for line in lines[1:-1]:  # Skip first and last lines for this loop
                 first_20_chars = line[:20]
                 for number in numbers:
                     if number in first_20_chars:
                         output_file.write(line)
+                        found_numbers.add(number)
                         found_count += 1
                         break  # No need to check the rest of the numbers for this line
             
             # Copy last row and append the count
             last_line = lines[-1].strip() + f" Found Records: {found_count}\n"
             output_file.write(last_line)
+
+            # List numbers that were not found
+            not_found_numbers = [number for number in numbers if number not in found_numbers]
+            output_file.write("\nNumbers not found in the file:\n")
+            output_file.write(", ".join(not_found_numbers) + "\n")
         
         messagebox.showinfo("Success", "File processed and output_file.txt has been created.")
     
@@ -55,9 +62,9 @@ input_file_entry = tk.Entry(root, width=50)
 input_file_entry.grid(row=0, column=1, padx=10, pady=10)
 tk.Button(root, text="Browse", command=select_input_file).grid(row=0, column=2, padx=10, pady=10)
 
-# Numbers input (Text Area for 60 lines)
-tk.Label(root, text="Enter Numbers (one per line, up to 60 lines):").grid(row=1, column=0, padx=10, pady=10)
-numbers_text = tk.Text(root, width=50, height=20)
+# Numbers input (Text Area for 500 lines)
+tk.Label(root, text="Enter Numbers (one per line, up to 500 lines):").grid(row=1, column=0, padx=10, pady=10)
+numbers_text = tk.Text(root, width=50, height=30)  # Adjusted height for more lines
 numbers_text.grid(row=1, column=1, padx=10, pady=10, columnspan=2)
 
 # Process button
