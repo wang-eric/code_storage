@@ -2,16 +2,18 @@ import pandas as pd
 from openpyxl import load_workbook
 from openpyxl.styles import Font
 import argparse
+from openpyxl.utils.dataframe import dataframe_to_rows
 
-def analyze_unique_values(data_file, columns_file, output_file, sheet_name=None):
+def analyze_value_counts(data_file, columns_file, output_file, sheet_name=None, top_n=None):
     """
-    Analyze unique values in specified columns of an Excel file.
+    Analyze value counts in specified columns of an Excel file.
     
     Args:
         data_file (str): Path to the Excel file containing data
         columns_file (str): Path to the Excel file containing column names to analyze
         output_file (str): Path to save the results
         sheet_name (str, optional): Specific sheet name to analyze in data_file
+        top_n (int, optional): Only include top N most frequent values (None for all)
     """
     
     try:
@@ -25,46 +27,83 @@ def analyze_unique_values(data_file, columns_file, output_file, sheet_name=None)
         else:
             df = pd.read_excel(data_file)
         
-        # Prepare results
-        results = []
-        
-        # Analyze each specified column
-        for column in columns_to_analyze:
-            if column in df.columns:
-                unique_count = df[column].nunique()
-                results.append({
-                    'Column Name': column,
-                    'Unique Values Count': unique_count,
-                    'Sample Unique Values': ', '.join(map(str, df[column].dropna().unique()[:5]))  # Show first 5 unique values
-                })
-            else:
-                results.append({
-                    'Column Name': column,
-                    'Unique Values Count': 'Column not found',
-                    'Sample Unique Values': 'N/A'
-                })
-        
-        # Convert results to DataFrame
-        results_df = pd.DataFrame(results)
-        
-        # Save to Excel with formatting
+        # Create a new Excel writer
         with pd.ExcelWriter(output_file, engine='openpyxl') as writer:
-            results_df.to_excel(writer, index=False, sheet_name='Unique Value Analysis')
+            # Create a summary sheet
+            summary_data = []
             
-            # Access the workbook and worksheet for formatting
-            workbook = writer.book
-            worksheet = writer.sheets['Unique Value Analysis']
+            for column in columns_to_analyze:
+                if column in df.columns:
+                    # Calculate value counts
+                    value_counts = df[column].value_counts(dropna=False).reset_index()
+                    value_counts.columns = ['Value', 'Count']
+                    
+                    # Calculate percentages
+                    total = value_counts['Count'].sum()
+                    value_counts['Percentage'] = (value_counts['Count'] / total * 100).round(2)
+                    
+                    # Sort by count (descending)
+                    value_counts = value_counts.sort_values('Count', ascending=False)
+                    
+                    # Limit to top N if specified
+                    if top_n:
+                        value_counts = value_counts.head(top_n)
+                    
+                    # Add to summary
+                    unique_count = len(value_counts)
+                    summary_data.append({
+                        'Column Name': column,
+                        'Total Unique Values': unique_count,
+                        'Most Common Value': value_counts.iloc[0]['Value'] if unique_count > 0 else 'N/A',
+                        'Most Common Count': value_counts.iloc[0]['Count'] if unique_count > 0 else 'N/A'
+                    })
+                    
+                    # Write to a separate sheet (sanitize sheet name)
+                    sheet_name = f"{column[:25]}"  # Limit sheet name length
+                    value_counts.to_excel(writer, index=False, sheet_name=sheet_name)
+                    
+                    # Format the sheet
+                    workbook = writer.book
+                    worksheet = writer.sheets[sheet_name]
+                    
+                    # Apply formatting
+                    header_font = Font(bold=True)
+                    for cell in worksheet[1]:  # First row (header)
+                        cell.font = header_font
+                    
+                    # Auto-adjust column widths
+                    for col in worksheet.columns:
+                        max_length = 0
+                        column_letter = col[0].column_letter
+                        for cell in col:
+                            try:
+                                if len(str(cell.value)) > max_length:
+                                    max_length = len(str(cell.value))
+                            except:
+                                pass
+                        adjusted_width = (max_length + 2) * 1.2
+                        worksheet.column_dimensions[column_letter].width = adjusted_width
+                else:
+                    summary_data.append({
+                        'Column Name': column,
+                        'Total Unique Values': 'Column not found',
+                        'Most Common Value': 'N/A',
+                        'Most Common Count': 'N/A'
+                    })
             
-            # Apply formatting
+            # Create summary sheet
+            summary_df = pd.DataFrame(summary_data)
+            summary_df.to_excel(writer, index=False, sheet_name='Summary')
+            
+            # Format summary sheet
+            worksheet = writer.sheets['Summary']
             header_font = Font(bold=True)
-            for cell in worksheet[1]:  # First row (header)
+            for cell in worksheet[1]:
                 cell.font = header_font
-            
-            # Auto-adjust column widths
-            for column in worksheet.columns:
+            for col in worksheet.columns:
                 max_length = 0
-                column_letter = column[0].column_letter
-                for cell in column:
+                column_letter = col[0].column_letter
+                for cell in col:
                     try:
                         if len(str(cell.value)) > max_length:
                             max_length = len(str(cell.value))
@@ -80,18 +119,20 @@ def analyze_unique_values(data_file, columns_file, output_file, sheet_name=None)
 
 if __name__ == "__main__":
     # Set up command line arguments
-    parser = argparse.ArgumentParser(description='Analyze unique values in specified columns of an Excel file.')
+    parser = argparse.ArgumentParser(description='Analyze value counts in specified columns of an Excel file.')
     parser.add_argument('data_file', help='Path to the Excel file containing data')
     parser.add_argument('columns_file', help='Path to the Excel file containing column names to analyze')
     parser.add_argument('output_file', help='Path to save the results')
     parser.add_argument('--sheet', help='Specific sheet name to analyze in data_file', default=None)
+    parser.add_argument('--top', type=int, help='Only include top N most frequent values', default=None)
     
     args = parser.parse_args()
     
     # Run the analysis
-    analyze_unique_values(
+    analyze_value_counts(
         data_file=args.data_file,
         columns_file=args.columns_file,
         output_file=args.output_file,
-        sheet_name=args.sheet
+        sheet_name=args.sheet,
+        top_n=args.top
     )
